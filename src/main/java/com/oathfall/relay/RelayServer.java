@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -53,6 +54,7 @@ public class RelayServer
 	private final List<HttpExchange> streams = new CopyOnWriteArrayList<>();
 
 	private HttpServer server;
+	private ExecutorService executor;
 	private int port;
 
 	public RelayServer(Handler handler)
@@ -69,7 +71,8 @@ public class RelayServer
 		this.port = port;
 
 		server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 0);
-		server.setExecutor(Executors.newFixedThreadPool(2));
+		executor = Executors.newFixedThreadPool(2);
+		server.setExecutor(executor);
 
 		server.createContext("/", this::serveTracker);
 		server.createContext("/api/ledger", this::serveLedger);
@@ -99,6 +102,14 @@ public class RelayServer
 		{
 			server.stop(0);
 			server = null;
+		}
+
+		// HttpServer.stop does not touch the executor, so toggling the relay would
+		// otherwise leak its threads every time it was switched back on.
+		if (executor != null)
+		{
+			executor.shutdownNow();
+			executor = null;
 		}
 	}
 

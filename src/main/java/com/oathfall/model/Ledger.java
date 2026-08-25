@@ -19,6 +19,8 @@ public class Ledger
 	public boolean hollowed = false;
 	public boolean hollowSpent = false;  // you may Hollow once
 	public boolean vigilUsedThisEra = false;
+	/** Scars absolved so far; drives the escalating Absolve cost. Persisted. */
+	public int absolved = 0;
 
 	public List<Scar> scars = new ArrayList<>();
 	public List<String> keptOaths = new ArrayList<>();
@@ -46,15 +48,25 @@ public class Ledger
 	}
 
 	/** Absolve costs 6, and one more for every Scar already absolved. */
-	public int absolveCost(int absolvedSoFar)
+	public int absolveCost()
 	{
-		return 6 + absolvedSoFar;
+		return 6 + absolved;
 	}
 
 	public boolean heraldDue()
 	{
 		int step = effectiveDoom();
 		return (step == 3 || step == 6 || step == 9) && !heraldsAnswered.contains(step);
+	}
+
+	/** Record that the Herald standing at the current step has been answered. */
+	public void markHeraldAnswered()
+	{
+		int step = effectiveDoom();
+		if (!heraldsAnswered.contains(step))
+		{
+			heraldsAnswered.add(step);
+		}
 	}
 
 	/** The Marked Scar pulls the next Herald one step closer. */

@@ -24,6 +24,7 @@ import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.client.callback.ClientThread;
@@ -87,7 +88,6 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 	private NavigationButton navButton;
 
 	private final Random random = new Random();
-	private int absolvedCount = 0;
 
 	@Provides
 	OathfallConfig provideConfig(ConfigManager configManager)
@@ -228,7 +228,21 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
-		updateProgress();
+		// Fires on every XP drop, so it must stay cheap: only level-shaped goals
+		// care, and refreshProgress persists nothing unless a value actually moved.
+		refreshProgress(GoalType.SKILL_LEVEL, GoalType.TOTAL_LEVEL, GoalType.QUEST);
+
+		if (config.autoEra())
+		{
+			maybeAdvanceEra();
+		}
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		// Item goals scan the bank, so only run them when a container really changed.
+		refreshProgress(GoalType.ITEM);
 	}
 
 	@Subscribe
@@ -285,9 +299,53 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 
 	// ================================================================= covenant
 
-	/** Deal a fresh table of three. */
+	// ---- Entry points called from the Swing panel and from relay HTTP threads.
+	// They all hop onto the client thread first: everything below reads the
+	// RuneLite client (levels, quests, item containers), which is only safe there.
+
 	@Override
 	public void deal()
+	{
+		clientThread.invoke(this::doDeal);
+	}
+
+	@Override
+	public void swear(String vowId)
+	{
+		clientThread.invoke(() -> doSwear(vowId));
+	}
+
+	@Override
+	public void settleKept()
+	{
+		clientThread.invoke(this::doSettleKept);
+	}
+
+	@Override
+	public void settleBroken(String reason)
+	{
+		clientThread.invoke(() -> doSettleBroken(reason));
+	}
+
+	@Override
+	public void spend(String rite, String argument)
+	{
+		clientThread.invoke(() -> doSpend(rite, argument));
+	}
+
+	/** Answer the Herald standing at the current Doom step. */
+	public void answerHerald(boolean won)
+	{
+		clientThread.invoke(() -> doAnswerHerald(won));
+	}
+
+	public void drawScar()
+	{
+		clientThread.invoke(this::doDrawScar);
+	}
+
+	/** Deal a fresh table of three. */
+	private void doDeal()
 	{
 		if (ledger.hasActiveVow())
 		{
@@ -306,8 +364,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		persistAndPush();
 	}
 
-	@Override
-	public void swear(String vowId)
+	private void doSwear(String vowId)
 	{
 		Vow vow = Decks.byId(vowId);
 		if (vow == null || !ledger.hand.contains(vowId))
@@ -339,8 +396,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		persistAndPush();
 	}
 
-	@Override
-	public void settleKept()
+	private void doSettleKept()
 	{
 		Vow vow = activeVow();
 		if (vow == null)
@@ -370,8 +426,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		persistAndPush();
 	}
 
-	@Override
-	public void settleBroken(String reason)
+	private void doSettleBroken(String reason)
 	{
 		Vow vow = activeVow();
 		if (vow == null)
@@ -385,7 +440,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 
 		if (config.autoScar())
 		{
-			drawScar();
+			doDrawScar();
 		}
 		else
 		{
@@ -400,7 +455,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 	}
 
 	/** Draw one Scar at random from those not already carried. */
-	public Scar drawScar()
+	private Scar doDrawScar()
 	{
 		List<Scar> pool = new ArrayList<>();
 		for (Scar scar : Scar.values())
@@ -424,8 +479,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		return drawn;
 	}
 
-	@Override
-	public void spend(String rite, String argument)
+	private void doSpend(String rite, String argument)
 	{
 		switch (rite == null ? "" : rite.toLowerCase())
 		{
@@ -461,7 +515,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 
 			case "absolve":
 			{
-				int cost = ledger.absolveCost(absolvedCount);
+				int cost = ledger.absolveCost();
 				Scar target = scarByTitle(argument);
 				if (target == null)
 				{
@@ -470,7 +524,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 				else if (pay(cost))
 				{
 					ledger.scars.remove(target);
-					absolvedCount++;
+					ledger.absolved++;
 					announce("Absolved: " + target.getTitle() + ".");
 				}
 				break;
@@ -491,6 +545,30 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		persistAndPush();
 	}
 
+	private void doAnswerHerald(boolean won)
+	{
+		if (!ledger.heraldDue())
+		{
+			announce("No Herald stands at Doom " + ledger.effectiveDoom() + ".");
+			return;
+		}
+
+		if (won)
+		{
+			ledger.markHeraldAnswered();
+			ledger.doom = Math.max(0, ledger.doom - 2);
+			announce("The Herald falls. Doom drops to " + ledger.doom + " and a Relic is bound.");
+		}
+		else
+		{
+			doDrawScar();
+			announce("The Herald stands. It returns next session, and nothing else counts.");
+		}
+
+		checkFall();
+		persistAndPush();
+	}
+
 	/** Losing Hardcore status, or Doom 10, Hollows the account. */
 	public void hollow()
 	{
@@ -508,7 +586,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 
 		for (int i = 0; i < 3; i++)
 		{
-			drawScar();
+			doDrawScar();
 		}
 
 		announce("The account is Hollowed. Doom resets to 5. The Atonement begins.");
@@ -534,25 +612,41 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		}
 	}
 
-	private void updateProgress()
+	/**
+	 * Recompute progress for the sworn Vow, but only when its goal is one of
+	 * {@code types}, and only persist when the measured value actually changed.
+	 * Without that gate this ran a bank scan and a config write on every XP drop.
+	 */
+	private void refreshProgress(GoalType... types)
 	{
 		Vow vow = activeVow();
-		if (vow == null || ledger.activeBroken || !vow.isAutoTracked())
+		if (vow == null || ledger.activeBroken || !vow.isAutoTracked() || !objectiveTracker.isAbsolute(vow))
 		{
 			return;
 		}
 
-		if (objectiveTracker.isAbsolute(vow))
+		boolean relevant = false;
+		for (GoalType type : types)
 		{
-			ledger.activeProgress = objectiveTracker.currentCounter(vow);
-			checkObjectiveComplete(vow);
+			if (vow.getGoalType() == type)
+			{
+				relevant = true;
+				break;
+			}
+		}
+		if (!relevant)
+		{
+			return;
 		}
 
-		if (config.autoEra())
+		int measured = objectiveTracker.currentCounter(vow);
+		if (measured == ledger.activeProgress)
 		{
-			maybeAdvanceEra();
+			return;
 		}
 
+		ledger.activeProgress = measured;
+		checkObjectiveComplete(vow);
 		persistAndPush();
 	}
 
@@ -563,7 +657,7 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 
 		if (config.autoBreak())
 		{
-			settleBroken(reason);
+			doSettleBroken(reason);
 		}
 		else
 		{

@@ -116,6 +116,16 @@ public class OathfallPanel extends PluginPanel
 			body.add(button("Deal the Vows", EMBER, e -> plugin.deal()));
 		}
 
+		if (ledger.heraldDue())
+		{
+			body.add(Box.createVerticalStrut(12));
+			body.add(sectionLabel("A HERALD STANDS"));
+			body.add(wrapped(ledger.era.getHerald() + " — at Doom " + ledger.effectiveDoom()
+				+ ". It returns every session until it is answered.", DOOM));
+			body.add(button("Herald slain", EMBER, e -> plugin.answerHerald(true)));
+			body.add(button("Herald stands", DOOM, e -> plugin.answerHerald(false)));
+		}
+
 		if (!ledger.scars.isEmpty())
 		{
 			body.add(Box.createVerticalStrut(12));
