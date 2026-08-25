@@ -116,11 +116,24 @@ public interface OathfallConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "showDrawOverlay",
+		name = "Show the draw table",
+		description = "Deal the three Vows as cards over the game window. Click a card to turn it,<br>"
+			+ "then click it again to swear it.",
+		section = display,
+		position = 1
+	)
+	default boolean showDrawOverlay()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "chatFeedback",
 		name = "Announce in chat",
 		description = "Print covenant events to your own chatbox. Local only — nothing is sent publicly.",
 		section = display,
-		position = 1
+		position = 2
 	)
 	default boolean chatFeedback()
 	{
@@ -133,7 +146,7 @@ public interface OathfallConfig extends Config
 		description = "The Vow id the comments voted in for the next draw, e.g. WAN-04.<br>"
 			+ "Leave blank to deal a third random card instead.",
 		section = display,
-		position = 2
+		position = 3
 	)
 	default String audienceCardId()
 	{

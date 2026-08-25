@@ -16,6 +16,8 @@ import com.oathfall.track.BindingMonitor;
 import com.oathfall.track.ObjectiveTracker;
 import com.oathfall.ui.OathfallOverlay;
 import com.oathfall.ui.OathfallPanel;
+import com.oathfall.ui.VowDrawInput;
+import com.oathfall.ui.VowDrawOverlay;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
@@ -32,6 +34,7 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.input.MouseManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -77,6 +80,9 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 	private ChatMessageManager chatMessageManager;
 
 	@Inject
+	private MouseManager mouseManager;
+
+	@Inject
 	private Gson gson;
 
 	private Ledger ledger = new Ledger();
@@ -85,6 +91,8 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 	private RelayServer relay;
 	private OathfallPanel panel;
 	private OathfallOverlay overlay;
+	private VowDrawOverlay drawOverlay;
+	private VowDrawInput drawInput;
 	private NavigationButton navButton;
 
 	private final Random random = new Random();
@@ -116,6 +124,11 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		overlay = new OathfallOverlay(this, config);
 		overlayManager.add(overlay);
 
+		drawOverlay = new VowDrawOverlay(this, client);
+		overlayManager.add(drawOverlay);
+		drawInput = new VowDrawInput(this, drawOverlay);
+		mouseManager.registerMouseListener(drawInput);
+
 		relay = new RelayServer(this);
 		if (config.relayEnabled())
 		{
@@ -135,8 +148,12 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 			relay.stop();
 			relay = null;
 		}
+		mouseManager.unregisterMouseListener(drawInput);
+		overlayManager.remove(drawOverlay);
 		overlayManager.remove(overlay);
 		clientToolbar.removeNavigation(navButton);
+		drawOverlay = null;
+		drawInput = null;
 		panel = null;
 		overlay = null;
 	}
@@ -333,6 +350,18 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		clientThread.invoke(() -> doSpend(rite, argument));
 	}
 
+	/** Put a mis-sworn Vow back on the table. Admin action, not a covenant rite. */
+	public void unswear()
+	{
+		clientThread.invoke(this::doUnswear);
+	}
+
+	/** Wipe the run back to a fresh Era I covenant. */
+	public void resetRun()
+	{
+		clientThread.invoke(this::doResetRun);
+	}
+
 	/** Answer the Herald standing at the current Doom step. */
 	public void answerHerald(boolean won)
 	{
@@ -358,6 +387,11 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 		for (Vow vow : hand)
 		{
 			ledger.hand.add(vow.getId());
+		}
+
+		if (drawOverlay != null)
+		{
+			drawOverlay.reset();
 		}
 
 		announce("Three cards on the table. The third is the Audience's Card.");
@@ -542,6 +576,37 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 				return;
 		}
 
+		persistAndPush();
+	}
+
+	private void doUnswear()
+	{
+		Vow vow = activeVow();
+		if (vow == null)
+		{
+			announce("No Vow is sworn.");
+			return;
+		}
+
+		// The card goes back on the table exactly as it was dealt. No Grace, no
+		// Scar, no Doom — this exists for misclicks, not for escaping a Binding.
+		ledger.clearActive();
+		announce("Unsworn: " + vow.getObjective() + ". The card is back on the table.");
+		if (drawOverlay != null)
+		{
+			drawOverlay.reset();
+		}
+		persistAndPush();
+	}
+
+	private void doResetRun()
+	{
+		ledger = new Ledger();
+		if (drawOverlay != null)
+		{
+			drawOverlay.reset();
+		}
+		announce("The covenant is torn up. A fresh run begins at Era I.");
 		persistAndPush();
 	}
 
@@ -847,6 +912,11 @@ public class OathfallPlugin extends Plugin implements RelayServer.Handler
 			}
 		}
 		return hand;
+	}
+
+	public boolean isDrawOverlayEnabled()
+	{
+		return config.showDrawOverlay();
 	}
 
 	public String relayUrl()

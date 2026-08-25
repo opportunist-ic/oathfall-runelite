@@ -13,6 +13,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
@@ -87,6 +88,7 @@ public class OathfallPanel extends PluginPanel
 			body.add(button("Settle as Kept", EMBER, e -> plugin.settleKept()));
 			body.add(button("Settle as Broken", DOOM,
 				e -> plugin.settleBroken(ledger.activeBreakReason == null ? "Settled by hand" : ledger.activeBreakReason)));
+			body.add(button("Unswear (misclick)", INK_DIM, e -> confirmUnswear()));
 		}
 		else
 		{
@@ -142,6 +144,10 @@ public class OathfallPanel extends PluginPanel
 		body.add(button("Vigil — 4", EMBER, e -> plugin.spend("vigil", "")));
 		body.add(button("Draw a Scar", DOOM, e -> plugin.drawScar()));
 
+		body.add(Box.createVerticalStrut(12));
+		body.add(sectionLabel("DANGER"));
+		body.add(button("Reset the whole run", DOOM, e -> confirmReset()));
+
 		String url = plugin.relayUrl();
 		body.add(Box.createVerticalStrut(12));
 		body.add(sectionLabel("COMPANION TRACKER"));
@@ -154,6 +160,49 @@ public class OathfallPanel extends PluginPanel
 
 		body.revalidate();
 		body.repaint();
+	}
+
+	private void confirmUnswear()
+	{
+		int answer = JOptionPane.showConfirmDialog(this,
+			"<html><b>Put the sworn Vow back on the table?</b>"
+				+ "<br><br>No Grace, no Scar, no Doom."
+				+ "<br>This is for misclicks. Abandoning a Vow you have"
+				+ "<br>actually started is still breaking it.</html>",
+			"Oathfall - unswear",
+			JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+
+		if (answer == JOptionPane.YES_OPTION)
+		{
+			plugin.unswear();
+		}
+	}
+
+	private void confirmReset()
+	{
+		Ledger ledger = plugin.getLedger();
+		int answer = JOptionPane.showConfirmDialog(this,
+			"<html><b>Tear up the covenant and start again at Era I?</b>"
+				+ "<br><br>This erases " + ledger.keptOaths.size() + " Kept Oath(s), "
+				+ ledger.scars.size() + " Scar(s),"
+				+ "<br>Doom " + ledger.doom + " and " + ledger.grace + " Grace."
+				+ "<br><br>It cannot be undone.</html>",
+			"Oathfall - reset the run",
+			JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+		if (answer != JOptionPane.YES_OPTION)
+		{
+			return;
+		}
+
+		// Destructive and irreversible, so make the second step deliberate.
+		String typed = JOptionPane.showInputDialog(this,
+			"Type RESET to confirm.", "Oathfall - reset the run", JOptionPane.WARNING_MESSAGE);
+
+		if (typed != null && typed.trim().equalsIgnoreCase("RESET"))
+		{
+			plugin.resetRun();
+		}
 	}
 
 	// ------------------------------------------------------------- components
