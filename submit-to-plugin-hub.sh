@@ -81,6 +81,12 @@ echo "==> cloning your fork"
 "$GH" repo clone "$USER_LOGIN/plugin-hub" "$WORK/plugin-hub" -- -q
 cd "$WORK/plugin-hub"
 
+# The clone has no identity; use the GitHub noreply address so a public commit
+# never carries a personal email.
+USER_ID="$("$GH" api user --jq .id)"
+git config user.name "$USER_LOGIN"
+git config user.email "${USER_ID}+${USER_LOGIN}@users.noreply.github.com"
+
 git remote add upstream https://github.com/runelite/plugin-hub.git 2>/dev/null || true
 git fetch -q upstream
 git checkout -q -B "$PLUGIN_ID" upstream/master
