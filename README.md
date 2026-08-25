@@ -112,11 +112,18 @@ has nothing to object to. Good enough for an end-of-episode ledger card.
 ./gradlew build
 ```
 
-To launch a development client with the plugin loaded:
+To launch a development client with the plugin loaded, double-click
+**`run-dev-client.bat`** (Windows) or run **`./run-dev-client.sh`**. Both are
+thin wrappers around:
 
 ```bash
 ./gradlew run
 ```
+
+The first launch downloads Gradle and the RuneLite client and takes a few
+minutes; later launches are quick. Once the client is up, open the **Oathfall**
+tab in the right-hand sidebar to deal a hand. If you use a Jagex account, the
+dev client needs [an extra login step](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts).
 
 Verified building against **RuneLite 1.12.36** on **JDK 11**, with zero
 deprecation warnings.
