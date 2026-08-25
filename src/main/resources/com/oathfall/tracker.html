@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Oathfall — Companion Tracker</title>
+<style>
+  :root{
+    --ground:#0A0D0B;--surface:#141A16;--surface-2:#1B231D;
+    --rule:#26302A;--rule-strong:#3B4A40;
+    --ink:#E9E5D8;--ink-2:#B3B6A7;--ink-3:#7C8477;
+    --ember:#C99435;--ember-hi:#EDBB59;
+    --doom:#A2455A;--doom-hi:#CB697F;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+       font:300 16px/1.6 Georgia,"Iowan Old Style",serif;padding:28px 20px 60px}
+  .wrap{max-width:900px;margin:0 auto}
+  h1{font-size:1.5rem;letter-spacing:.22em;text-transform:uppercase;margin:0 0 4px;font-weight:400}
+  .sub{font:400 .66rem/1 ui-monospace,monospace;letter-spacing:.3em;text-transform:uppercase;color:var(--ink-3)}
+  .status{font:400 .66rem/1 ui-monospace,monospace;letter-spacing:.2em;text-transform:uppercase;
+          color:var(--ink-3);margin-top:14px}
+  .status b{color:var(--ember-hi);font-weight:400}
+  .status.off b{color:var(--doom-hi)}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);
+         border:1px solid var(--rule);margin:22px 0}
+  .stat{background:var(--surface);padding:14px 16px}
+  .stat .k{font:400 .58rem/1 ui-monospace,monospace;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-3)}
+  .stat .v{font-size:1.5rem;margin-top:6px;font-variant-numeric:tabular-nums}
+  .stat.doom .v{color:var(--doom-hi)} .stat.grace .v{color:var(--ember-hi)}
+
+  h2{font:400 .62rem/1 ui-monospace,monospace;letter-spacing:.26em;text-transform:uppercase;
+     color:var(--ember);margin:30px 0 12px}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:flex;
+        flex-direction:column;gap:10px;min-height:210px}
+  .card.aud{border-color:var(--rule-strong)}
+  .id{font:400 .62rem/1 ui-monospace,monospace;letter-spacing:.16em;color:var(--ember);
+      display:flex;justify-content:space-between;gap:8px}
+  .id .aud-tag{color:var(--ink-3)}
+  .obj{font-size:1.08rem;line-height:1.3}
+  .bind{margin-top:auto;border-top:1px solid var(--rule);padding-top:10px}
+  .bind .n{color:var(--doom-hi)}
+  .bind .r{font-size:.84rem;color:var(--ink-2);display:block}
+  .meta{font:400 .62rem/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--ink-3);
+        display:flex;justify-content:space-between}
+  .meta .g{color:var(--ember-hi)}
+
+  button{font:400 .64rem/1 ui-monospace,monospace;letter-spacing:.18em;text-transform:uppercase;
+         padding:10px 16px;background:transparent;border:1px solid var(--ember);color:var(--ember-hi);
+         cursor:pointer;transition:background .18s,color .18s}
+  button:hover{background:var(--ember);color:var(--ground)}
+  button.danger{border-color:var(--doom);color:var(--doom-hi)}
+  button.danger:hover{background:var(--doom);color:var(--ink)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+
+  .sworn{background:var(--surface);border:1px solid var(--ember);padding:22px}
+  .sworn .obj{font-size:1.3rem}
+  .broken{border-color:var(--doom)}
+  .bar{height:3px;background:var(--rule);margin-top:12px}
+  .bar i{display:block;height:3px;background:var(--ember)}
+  .scars{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .scars div{background:var(--surface);padding:12px 15px;font-size:.88rem}
+  .scars b{color:var(--doom-hi);font-weight:400}
+  .empty{color:var(--ink-3);font-size:.92rem}
+  @media(max-width:760px){.stats{grid-template-columns:1fr 1fr}.cards{grid-template-columns:1fr}.scars{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Oathfall</h1>
+  <div class="sub">Companion Tracker</div>
+  <div class="status" id="status">Connecting to the client&hellip;</div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Era</div><div class="v" id="era">&mdash;</div></div>
+    <div class="stat doom"><div class="k">Doom</div><div class="v" id="doom">&mdash;</div></div>
+    <div class="stat grace"><div class="k">Grace</div><div class="v" id="grace">&mdash;</div></div>
+    <div class="stat"><div class="k">Scars</div><div class="v" id="scarcount">&mdash;</div></div>
+  </div>
+
+  <div id="main"></div>
+
+  <h2>Scars carried</h2>
+  <div id="scars"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var TOKEN = "__OATHFALL_TOKEN__";
+  var ERAS = { WAKING: "I", WANDERING: "II", ASCENT: "III", CRUCIBLE: "IV", RECKONING: "V" };
+  var ledger = null;
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function status(text, ok) {
+    var s = el("status");
+    s.className = "status" + (ok ? "" : " off");
+    s.innerHTML = "Client <b>" + esc(text) + "</b>";
+  }
+
+  function act(name, arg, arg2) {
+    var url = "/api/action?t=" + encodeURIComponent(TOKEN) + "&do=" + encodeURIComponent(name);
+    if (arg) { url += "&arg=" + encodeURIComponent(arg); }
+    if (arg2) { url += "&arg2=" + encodeURIComponent(arg2); }
+    fetch(url, { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () { status("unreachable", false); });
+  }
+
+  function render(next) {
+    if (next) { ledger = next; }
+    if (!ledger) { return; }
+
+    el("era").textContent = ERAS[ledger.era] || ledger.era;
+    el("doom").textContent = ledger.doom + " / 10";
+    el("grace").textContent = ledger.grace + " / " + (ledger.scars.indexOf("CRACKED_LEDGER") > -1 ? 8 : 10);
+    el("scarcount").textContent = ledger.scars.length;
+
+    var main = el("main");
+
+    if (ledger.activeVowId) {
+      main.innerHTML =
+        '<h2>The sworn Vow</h2>' +
+        '<div class="sworn' + (ledger.activeBroken ? " broken" : "") + '">' +
+          '<div class="id"><span>' + esc(ledger.activeVowId) + '</span>' +
+          (ledger.activeIsAudienceCard ? '<span class="aud-tag">Audience</span>' : '') + '</div>' +
+          '<div class="obj">' + esc(window.__vowText || "Sworn — see the client panel") + '</div>' +
+          (ledger.activeBroken
+            ? '<div class="bind"><span class="n">Broken</span><span class="r">' + esc(ledger.activeBreakReason) + '</span></div>'
+            : '<div class="bar"><i style="width:' + Math.min(100, ledger.activeProgress) + '%"></i></div>') +
+          '<div class="row">' +
+            '<button id="kept">Settle as Kept</button>' +
+            '<button id="broke" class="danger">Settle as Broken</button>' +
+          '</div>' +
+        '</div>';
+      el("kept").onclick = function () { act("kept"); };
+      el("broke").onclick = function () { act("broken", "Settled from the tracker"); };
+      return;
+    }
+
+    var html = '<h2>The table</h2>';
+    if (!ledger.hand || !ledger.hand.length) {
+      html += '<p class="empty">No cards dealt. Deal a hand to begin the session.</p>';
+    } else {
+      html += '<div class="cards">' + ledger.hand.map(function (id, i) {
+        return '<div class="card' + (i === 2 ? " aud" : "") + '">' +
+          '<div class="id"><span>' + esc(id) + '</span>' +
+            (i === 2 ? '<span class="aud-tag">Audience</span>' : '') + '</div>' +
+          '<div class="obj">Card ' + (i + 1) + '</div>' +
+          '<div class="bind"><span class="r">Full text is shown in the client panel.</span></div>' +
+          '<button data-swear="' + esc(id) + '">Swear</button>' +
+        '</div>';
+      }).join("") + '</div>';
+    }
+
+    html += '<div class="row">' +
+      '<button id="deal">Deal the Vows</button>' +
+      '<button id="temper">Temper &mdash; 2</button>' +
+      '<button id="vigil">Vigil &mdash; 4</button>' +
+      '</div>';
+
+    main.innerHTML = html;
+    el("deal").onclick = function () { act("deal"); };
+    el("temper").onclick = function () { act("spend", "temper"); };
+    el("vigil").onclick = function () { act("spend", "vigil"); };
+    Array.prototype.forEach.call(main.querySelectorAll("[data-swear]"), function (b) {
+      b.onclick = function () { act("swear", b.getAttribute("data-swear")); };
+    });
+  }
+
+  function renderScars() {
+    var box = el("scars");
+    if (!ledger || !ledger.scars.length) {
+      box.innerHTML = '<p class="empty">None. The covenant has taken nothing yet.</p>';
+      return;
+    }
+    box.innerHTML = '<div class="scars">' + ledger.scars.map(function (s) {
+      return '<div><b>' + esc(s.replace(/_/g, " ")) + '</b></div>';
+    }).join("") + '</div>';
+  }
+
+  // Live feed. Same-origin, so no CSP or CORS involved.
+  var source = new EventSource("/api/stream?t=" + encodeURIComponent(TOKEN));
+  source.onopen = function () { status("connected", true); };
+  source.onerror = function () { status("disconnected — is RuneLite running?", false); };
+  source.onmessage = function (e) {
+    try {
+      render(JSON.parse(e.data));
+      renderScars();
+    } catch (err) {
+      status("sent something unreadable", false);
+    }
+  };
+})();
+</script>
+</body>
+</html>
