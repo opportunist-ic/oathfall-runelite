@@ -128,7 +128,7 @@ deprecation warnings.
 3. Add a file named `oathfall` under `plugins/` containing:
 
    ```
-   repository=https://github.com/<user>/oathfall-runelite.git
+   repository=https://github.com/opportunist-ic/oathfall-runelite.git
    commit=<full 40-character commit hash>
    ```
 
