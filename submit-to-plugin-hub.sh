@@ -68,7 +68,14 @@ echo "    build OK"
 # ---------------------------------------------------------------- 4. plugin-hub
 WORK="$(mktemp -d)"
 echo "==> forking runelite/plugin-hub"
-"$GH" repo fork runelite/plugin-hub --clone=false --remote=false >/dev/null 2>&1 || echo "    fork already exists"
+# --remote is rejected when a repository argument is given, and a failure here
+# must not be swallowed as "already exists" — that hides real errors.
+if "$GH" repo view "$USER_LOGIN/plugin-hub" >/dev/null 2>&1; then
+	echo "    fork already exists"
+else
+	"$GH" repo fork runelite/plugin-hub --clone=false
+	sleep 6
+fi
 
 echo "==> cloning your fork"
 "$GH" repo clone "$USER_LOGIN/plugin-hub" "$WORK/plugin-hub" -- -q
